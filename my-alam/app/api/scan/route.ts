@@ -1,49 +1,65 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const GEMINI_MODELS = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite-preview-06-17",
+];
 
-export async function POST(req: NextRequest) {
-  try {
-    const { prompt } = await req.json();
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-    if (!prompt) {
-      return NextResponse.json({ error: "Prompt wajib diisi" }, { status: 400 });
-    }
+export async function GET() {
+  const apiKey = process.env.GEMINI_API_KEY;
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "GEMINI_API_KEY belum diset di .env.local" },
-        { status: 500 }
-      );
-    }
-
-    const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
-      }),
+  if (!apiKey) {
+    return NextResponse.json({
+      status: "❌ GAGAL",
+      error: "GEMINI_API_KEY tidak ditemukan di .env.local",
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: `Gemini error ${response.status}`, detail: data },
-        { status: response.status }
-      );
-    }
-
-    const raw: string =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    const cleaned = raw.replace(/```json|```/g, "").trim();
-
-    return NextResponse.json({ result: cleaned });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
   }
+
+  const results: Record<string, string> = {};
+
+  for (const model of GEMINI_MODELS) {
+    const url = `${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`;
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: "Balas dengan kata: BERHASIL" }] }],
+          generationConfig: { maxOutputTokens: 10 },
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 429) {
+        results[model] = "❌ Quota habis (429)";
+        continue;
+      }
+
+      if (!res.ok) {
+        results[model] = `❌ Error ${res.status}: ${data?.error?.message ?? "unknown"}`;
+        continue;
+      }
+
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "(kosong)";
+      results[model] = `✅ OK — "${text.trim()}"`;
+
+    } catch (err: unknown) {
+      results[model] = `❌ Network error: ${String(err)}`;
+    }
+  }
+
+  // Tentukan model aktif pertama yang berhasil
+  const activeModel = Object.entries(results).find(([, v]) => v.startsWith("✅"))?.[0] ?? null;
+
+  return NextResponse.json({
+    status: activeModel ? "✅ SIAP" : "❌ SEMUA MODEL GAGAL",
+    activeModel: activeModel ?? "tidak ada",
+    modelStatus: results,
+  });
 }

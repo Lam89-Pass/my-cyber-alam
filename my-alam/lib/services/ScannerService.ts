@@ -1,44 +1,49 @@
 import { IScanResult, IScanService, ScanStatus, ScanType } from "@/types";
 
+// ─── ScannerService Class (OOP) ────────────────────────────────────────────────
 export class ScannerService implements IScanService {
-  private readonly apiRoute = "/api/scan";
 
-  // ── Private: call internal API route ────────────────────────────────────────
-  private async callAPI(prompt: string): Promise<string> {
-    const response = await fetch(this.apiRoute, {
+  // ── Private: call /api/scan route (server-side, aman) ──────────────────────
+  private async callAI(prompt: string): Promise<string> {
+    const response = await fetch("/api/scan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
+
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error ?? `HTTP ${response.status}`);
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.error ?? `HTTP Error: ${response.status}`);
     }
+
     const data = await response.json();
+    if (data.error) throw new Error(data.error);
+
     return data.result ?? "";
   }
 
-  // ── Prompts ──────────────────────────────────────────────────────────────────
+  // ── Private: build URL prompt ────────────────────────────────────────────────
   private buildUrlPrompt(url: string): string {
-    return `Kamu adalah sistem keamanan siber profesional. Analisis URL berikut dan berikan laporan keamanan dalam format JSON ketat (tidak ada teks di luar JSON):
+    return `Kamu adalah sistem keamanan siber profesional. Analisis URL berikut dan berikan laporan keamanan dalam format JSON yang ketat (tidak ada teks di luar JSON):
 
 URL: ${url}
 
-Kembalikan HANYA JSON ini:
+Kembalikan HANYA JSON ini (tidak ada komentar, tidak ada markdown):
 {
   "status": "AMAN | BERBAHAYA | MENCURIGAKAN",
   "riskScore": <angka 0-100>,
-  "category": "<Phishing | Malware Distributor | Safe Website | Suspicious Redirect | Scam | dll>",
+  "category": "<kategori: Phishing, Malware Distributor, Safe Website, Suspicious Redirect, dll>",
   "domain": "<nama domain>",
   "ssl": "<Ada | Tidak Ada | Expired>",
-  "redirects": "<jumlah redirect>",
+  "redirects": "<jumlah redirect, misal: 0, 1, 3>",
   "ipReputation": "<Bersih | Listed di Blacklist | Tidak Diketahui>",
-  "summary": "<penjelasan 2-3 kalimat Bahasa Indonesia>",
+  "summary": "<penjelasan singkat 2-3 kalimat dalam Bahasa Indonesia>",
   "indicators": ["<indicator 1>", "<indicator 2>", "<indicator 3>"],
-  "recommendation": "<saran dalam Bahasa Indonesia>"
+  "recommendation": "<saran tindakan dalam Bahasa Indonesia>"
 }`;
   }
 
+  // ── Private: build File prompt ───────────────────────────────────────────────
   private buildFilePrompt(fileName: string, fileSize: number): string {
     const sizeMB = (fileSize / 1024 / 1024).toFixed(2);
     return `Kamu adalah sistem keamanan siber profesional. Analisis file berikut dan berikan laporan dalam format JSON ketat:
@@ -49,88 +54,126 @@ Kembalikan HANYA JSON ini:
 {
   "status": "AMAN | BERBAHAYA | MENCURIGAKAN",
   "riskScore": <angka 0-100>,
-  "category": "<Malware | Adware | Spyware | Clean | PUP | Ransomware | Trojan | dll>",
+  "category": "<kategori: Malware, Adware, Spyware, Clean, Potentially Unwanted Program, Ransomware, dll>",
   "fileType": "<jenis file berdasarkan ekstensi>",
-  "dangerousPermissions": ["<permission berbahaya jika APK, kosong [] jika bukan>"],
-  "summary": "<penjelasan 2-3 kalimat Bahasa Indonesia>",
+  "dangerousPermissions": ["<permission berbahaya jika APK, kosong [] jika bukan APK>"],
+  "summary": "<penjelasan 2-3 kalimat dalam Bahasa Indonesia>",
   "indicators": ["<indicator 1>", "<indicator 2>", "<indicator 3>"],
   "recommendation": "<saran dalam Bahasa Indonesia>"
 }`;
   }
 
+  // ── Private: build Phone prompt ──────────────────────────────────────────────
   private buildPhonePrompt(phone: string): string {
-    return `Kamu adalah sistem keamanan siber dan fraud detection profesional untuk konteks Indonesia. Analisis nomor telepon berikut:
+    return `Kamu adalah sistem keamanan siber profesional. Analisis nomor telepon berikut dan berikan laporan dalam format JSON ketat:
 
 Nomor: ${phone}
 
-Berdasarkan pengetahuanmu tentang pola penipuan di Indonesia (OTP fraud, pinjol ilegal, investasi bodong, social engineering, WhatsApp scam), analisis nomor ini dan kembalikan HANYA JSON ini:
+Kembalikan HANYA JSON ini:
 {
   "status": "AMAN | BERBAHAYA | MENCURIGAKAN",
   "riskScore": <angka 0-100>,
-  "category": "<Nomor Normal | Potensi Scam | OTP Fraud | Pinjol Ilegal | Investasi Bodong | Penipuan WhatsApp | dll>",
-  "operator": "<Telkomsel | Indosat | XL | Tri | Smartfren | BTEL | Tidak Diketahui>",
-  "region": "<perkiraan asal region/provinsi berdasarkan prefix, atau Tidak Diketahui>",
-  "reportedCount": "<Tidak Ada Laporan | Sedikit Laporan | Banyak Laporan | Sangat Banyak Laporan>",
-  "scamType": "<jenis penipuan yang umum dari nomor ini, atau Tidak Terdeteksi>",
-  "summary": "<penjelasan 2-3 kalimat Bahasa Indonesia tentang analisis nomor ini>",
-  "indicators": ["<indicator 1>", "<indicator 2>", "<indicator 3>"],
-  "recommendation": "<saran tindakan dalam Bahasa Indonesia>"
-}`;
-  }
-
-  private buildEmailPrompt(email: string): string {
-    return `Kamu adalah sistem keamanan siber dan email security profesional. Analisis alamat email berikut untuk mendeteksi potensi phishing, spam, atau ancaman keamanan:
-
-Email: ${email}
-
-Analisis domain email, pola nama, reputasi, dan potensi ancaman. Kembalikan HANYA JSON ini:
-{
-  "status": "AMAN | BERBAHAYA | MENCURIGAKAN",
-  "riskScore": <angka 0-100>,
-  "category": "<Email Legitimate | Phishing | Spam | Disposable Email | Spoofed Domain | Business Email Compromise | dll>",
-  "emailDomain": "<nama domain email>",
-  "spfStatus": "<Valid | Tidak Valid | Tidak Diketahui>",
-  "dmarcStatus": "<Ada | Tidak Ada | Tidak Diketahui>",
-  "breachFound": "<Tidak Ada | Kemungkinan Bocor | Terdeteksi di Database Breach>",
-  "senderReputation": "<Terpercaya | Netral | Mencurigakan | Berbahaya>",
-  "summary": "<penjelasan 2-3 kalimat Bahasa Indonesia>",
-  "indicators": ["<indicator 1>", "<indicator 2>", "<indicator 3>"],
+  "category": "<kategori: Scam Call, OTP Fraud, Pinjol Ilegal, Investasi Bodong, Normal, dll>",
+  "operator": "<nama operator: Telkomsel, Indosat, XL, Smartfren, By.U, dll>",
+  "region": "<perkiraan wilayah registrasi>",
+  "reportedCount": "<Tidak Ada Laporan | Dilaporkan Beberapa Kali | Sering Dilaporkan>",
+  "scamType": "<jenis penipuan jika ada, atau Tidak Terdeteksi>",
+  "summary": "<penjelasan 2-3 kalimat dalam Bahasa Indonesia>",
+  "indicators": ["<indicator 1>", "<indicator 2>"],
   "recommendation": "<saran dalam Bahasa Indonesia>"
 }`;
   }
 
-  // ── Public Methods ────────────────────────────────────────────────────────────
+  // ── Private: build Email prompt ──────────────────────────────────────────────
+  private buildEmailPrompt(email: string): string {
+    return `Kamu adalah sistem keamanan siber profesional. Analisis alamat email berikut dan berikan laporan dalam format JSON ketat:
+
+Email: ${email}
+
+Kembalikan HANYA JSON ini:
+{
+  "status": "AMAN | BERBAHAYA | MENCURIGAKAN",
+  "riskScore": <angka 0-100>,
+  "category": "<kategori: Phishing Email, Spam, Disposable Email, Trusted, Business Email Compromise, dll>",
+  "emailDomain": "<domain email>",
+  "senderReputation": "<Terpercaya | Mencurigakan | Berbahaya>",
+  "breachFound": "<Tidak Ada | Ditemukan di 1 Breach | Ditemukan di Banyak Breach>",
+  "spfStatus": "<Valid | Tidak Valid | Tidak Ada>",
+  "dmarcStatus": "<Ada | Tidak Ada>",
+  "summary": "<penjelasan 2-3 kalimat dalam Bahasa Indonesia>",
+  "indicators": ["<indicator 1>", "<indicator 2>"],
+  "recommendation": "<saran dalam Bahasa Indonesia>"
+}`;
+  }
+
+  // ── Public: Scan URL ─────────────────────────────────────────────────────────
   async scanUrl(url: string): Promise<IScanResult> {
-    const raw = await this.callAPI(this.buildUrlPrompt(url));
+    const prompt = this.buildUrlPrompt(url);
+    const raw = await this.callAI(prompt);
     const parsed = JSON.parse(raw);
-    return { ...parsed, status: parsed.status as ScanStatus, type: ScanType.URL, inputRef: url, scannedAt: new Date() };
+
+    return {
+      ...parsed,
+      status: parsed.status as ScanStatus,
+      type: ScanType.URL,
+      inputRef: url,
+      scannedAt: new Date(),
+    };
   }
 
+  // ── Public: Scan File ────────────────────────────────────────────────────────
   async scanFile(fileName: string, fileSize: number): Promise<IScanResult> {
-    const raw = await this.callAPI(this.buildFilePrompt(fileName, fileSize));
+    const prompt = this.buildFilePrompt(fileName, fileSize);
+    const raw = await this.callAI(prompt);
     const parsed = JSON.parse(raw);
-    return { ...parsed, status: parsed.status as ScanStatus, type: ScanType.FILE, inputRef: fileName, scannedAt: new Date() };
+
+    return {
+      ...parsed,
+      status: parsed.status as ScanStatus,
+      type: ScanType.FILE,
+      inputRef: fileName,
+      scannedAt: new Date(),
+    };
   }
 
+  // ── Public: Scan Phone ───────────────────────────────────────────────────────
   async scanPhone(phone: string): Promise<IScanResult> {
-    const raw = await this.callAPI(this.buildPhonePrompt(phone));
+    const prompt = this.buildPhonePrompt(phone);
+    const raw = await this.callAI(prompt);
     const parsed = JSON.parse(raw);
-    return { ...parsed, status: parsed.status as ScanStatus, type: ScanType.PHONE, inputRef: phone, scannedAt: new Date() };
+
+    return {
+      ...parsed,
+      status: parsed.status as ScanStatus,
+      type: ScanType.PHONE,
+      inputRef: phone,
+      scannedAt: new Date(),
+    };
   }
 
+  // ── Public: Scan Email ───────────────────────────────────────────────────────
   async scanEmail(email: string): Promise<IScanResult> {
-    const raw = await this.callAPI(this.buildEmailPrompt(email));
+    const prompt = this.buildEmailPrompt(email);
+    const raw = await this.callAI(prompt);
     const parsed = JSON.parse(raw);
-    return { ...parsed, status: parsed.status as ScanStatus, type: ScanType.EMAIL, inputRef: email, scannedAt: new Date() };
+
+    return {
+      ...parsed,
+      status: parsed.status as ScanStatus,
+      type: ScanType.EMAIL,
+      inputRef: email,
+      scannedAt: new Date(),
+    };
   }
 
-  // ── Static Utilities ──────────────────────────────────────────────────────────
+  // ── Utility: get risk color class ────────────────────────────────────────────
   static getRiskColorClass(score: number): string {
     if (score < 30) return "green";
     if (score > 65) return "red";
     return "yellow";
   }
 
+  // ── Utility: get badge class ─────────────────────────────────────────────────
   static getBadgeClass(status: ScanStatus): string {
     const map: Record<ScanStatus, string> = {
       [ScanStatus.AMAN]: "badge-safe",
@@ -140,6 +183,7 @@ Analisis domain email, pola nama, reputasi, dan potensi ancaman. Kembalikan HANY
     return map[status] ?? "badge-warn";
   }
 
+  // ── Utility: get status icon ─────────────────────────────────────────────────
   static getStatusIcon(status: ScanStatus): string {
     const map: Record<ScanStatus, string> = {
       [ScanStatus.AMAN]: "✅",
@@ -150,4 +194,5 @@ Analisis domain email, pola nama, reputasi, dan potensi ancaman. Kembalikan HANY
   }
 }
 
+// ── Singleton instance (pakai di seluruh app) ──────────────────────────────────
 export const scannerService = new ScannerService();
