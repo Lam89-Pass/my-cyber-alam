@@ -8,8 +8,7 @@ export enum ScanStatus {
 export enum ScanType {
   URL    = "url",
   FILE   = "file",
-  PHONE  = "phone",
-  EMAIL  = "email",
+PASSWORD = "PASSWORD",
 }
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────

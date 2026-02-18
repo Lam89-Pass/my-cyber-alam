@@ -1,22 +1,21 @@
 "use client";
+
 import { useRef, useState } from "react";
 import { IScanResult, ScanType } from "@/types";
 import { scannerService } from "@/lib/services/ScannerService";
 import ResultCard from "@/components/ResultCard";
 
-// ─── Tab config ────────────────────────────────────────────────────────────────
+// ─── Tab config (Phone & Email dihapus, diganti Password) ──────────────────────
 const TABS = [
-  { type: ScanType.URL,   label: "Scan URL",      icon: "🔗" },
-  { type: ScanType.FILE,  label: "Scan File/APK",  icon: "📁" },
-  { type: ScanType.PHONE, label: "Scan No. HP",    icon: "📱" },
-  { type: ScanType.EMAIL, label: "Scan Email",     icon: "📧" },
+  { type: ScanType.URL,      label: "Scan URL",       icon: "🔗" },
+  { type: ScanType.FILE,     label: "Scan File/APK",  icon: "📁" },
+  { type: ScanType.PASSWORD, label: "Scan Password",  icon: "🔑" },
 ];
 
 export default function Scanner() {
   const [tab, setTab]           = useState<ScanType>(ScanType.URL);
   const [url, setUrl]           = useState("");
-  const [phone, setPhone]       = useState("");
-  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
   const [file, setFile]         = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -26,13 +25,18 @@ export default function Scanner() {
 
   const reset = (newTab: ScanType) => {
     setTab(newTab); setResult(null); setError("");
-    setUrl(""); setPhone(""); setEmail(""); setFile(null);
+    setUrl(""); setPassword(""); setFile(null);
   };
 
   const run = async (fn: () => Promise<IScanResult>) => {
     setScanning(true); setResult(null); setError("");
-    try { setResult(await fn()); }
-    catch { setError("Gagal menganalisis. Periksa koneksi atau coba lagi."); }
+    try { 
+      const res = await fn();
+      setResult(res); 
+    }
+    catch (err: any) { 
+      setError(err.message || "Gagal menganalisis. Periksa koneksi atau coba lagi."); 
+    }
     finally { setScanning(false); }
   };
 
@@ -41,10 +45,6 @@ export default function Scanner() {
     const f = e.dataTransfer.files[0];
     if (f) setFile(f);
   };
-
-  // ── Validasi sederhana ────────────────────────────────────────────────────────
-  const isPhoneValid = phone.replace(/\D/g, "").length >= 8;
-  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   return (
     <>
@@ -252,6 +252,8 @@ export default function Scanner() {
           line-height: 1.6;
         }
 
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
         /* RESPONSIVE */
         @media (max-width: 640px) {
           .scanner-wrap { padding: 0 1.2rem 4rem; }
@@ -335,53 +337,28 @@ export default function Scanner() {
             </>
           )}
 
-          {/* PHONE */}
-          {tab === ScanType.PHONE && (
+          {/* PASSWORD (FITUR BARU) */}
+          {tab === ScanType.PASSWORD && (
             <>
-              <span className="input-label">Masukkan Nomor HP yang Mencurigakan</span>
+              <span className="input-label">Cek Kekuatan & Kebocoran Password</span>
               <div className="input-row">
                 <input
                   className="text-input"
-                  type="tel"
-                  placeholder="08xx-xxxx-xxxx atau +628xx..."
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && isPhoneValid && run(() => scannerService.scanPhone(phone.trim()))}
+                  type="password"
+                  placeholder="Masukkan password yang ingin diuji..."
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && password.length > 0 && run(() => scannerService.scanPassword(password))}
                 />
                 <button
                   className="scan-btn"
-                  onClick={() => run(() => scannerService.scanPhone(phone.trim()))}
-                  disabled={scanning || !isPhoneValid}
+                  onClick={() => run(() => scannerService.scanPassword(password))}
+                  disabled={scanning || !password}
                 >
-                  🔍 {scanning ? "Scanning..." : "Scan"}
+                  🔍 {scanning ? "Menganalisis..." : "Cek Password"}
                 </button>
               </div>
-              <p className="input-hint">Cek nomor penipu, OTP scam, pinjol ilegal, investasi bodong</p>
-            </>
-          )}
-
-          {/* EMAIL */}
-          {tab === ScanType.EMAIL && (
-            <>
-              <span className="input-label">Masukkan Alamat Email yang Mencurigakan</span>
-              <div className="input-row">
-                <input
-                  className="text-input"
-                  type="email"
-                  placeholder="contoh@domain.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && isEmailValid && run(() => scannerService.scanEmail(email.trim()))}
-                />
-                <button
-                  className="scan-btn"
-                  onClick={() => run(() => scannerService.scanEmail(email.trim()))}
-                  disabled={scanning || !isEmailValid}
-                >
-                  🔍 {scanning ? "Scanning..." : "Scan"}
-                </button>
-              </div>
-              <p className="input-hint">Cek email phishing, domain palsu, email bocor di database breach</p>
+              <p className="input-hint">Kami akan menganalisis entropi, kekuatan, dan potensi kebocoran password ini di database.</p>
             </>
           )}
         </div>
@@ -395,7 +372,7 @@ export default function Scanner() {
             <div className="scan-ring" />
             <p className="scan-anim-text">🔍 AI sedang menganalisis...</p>
             <p className="scan-anim-text" style={{ fontSize: "0.72rem", marginTop: "4px", opacity: 0.6 }}>
-              Memeriksa database ancaman & pola berbahaya
+              Memeriksa pola keamanan & database breach melalui Groq Llama 3
             </p>
           </div>
         )}

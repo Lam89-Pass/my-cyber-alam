@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// ── Fallback chain: coba satu per satu kalau quota habis ──────────────────────
-// Urutan: paling umum → paling ringan (semua masih aktif 2025)
+// ── Fallback chain: daftar model yang VALID dan tersedia di v1beta ──────────
 const GEMINI_MODELS = [
   "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite-preview-06-17",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+  "gemini-1.5-pro",
 ];
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -23,20 +22,23 @@ async function callGeminiWithFallback(prompt: string, apiKey: string): Promise<s
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+          generationConfig: { 
+            temperature: 0.1, 
+            maxOutputTokens: 2048,
+            response_mime_type: "application/json" // Memaksa AI kirim format JSON
+          },
         }),
       });
 
       const data = await res.json();
 
-      // Kalau 429 (quota habis) → coba model berikutnya
-      if (res.status === 429) {
-        lastError = `[${model}] quota habis`;
+      // Jika 429 (quota habis) atau 404 (model tidak ditemukan) -> coba model berikutnya
+      if (res.status === 429 || res.status === 404) {
+        lastError = `[${model}] ${res.status === 429 ? "quota habis" : "tidak ditemukan"}`;
         console.warn(`⚠️ ${lastError}, mencoba model berikutnya...`);
         continue;
       }
 
-      // Error lain (401, 400, dll) → langsung gagal, jangan coba model lain
       if (!res.ok) {
         const errMsg = data?.error?.message ?? `HTTP ${res.status}`;
         throw new Error(`[${model}] ${errMsg}`);
@@ -45,20 +47,18 @@ async function callGeminiWithFallback(prompt: string, apiKey: string): Promise<s
       const raw: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
       if (!raw) throw new Error(`[${model}] Respons kosong`);
 
-      // Log model yang berhasil (opsional, untuk debugging)
       console.log(`✅ Berhasil menggunakan model: ${model}`);
       return raw;
 
     } catch (err: unknown) {
-      // Kalau error bukan quota, langsung lempar
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("quota habis")) throw err;
+      // Jika error bukan masalah kuota/model tidak ada, jangan lanjut looping
+      if (!msg.includes("quota habis") && !msg.includes("404")) throw err;
       lastError = msg;
     }
   }
 
-  // Semua model habis quota
-  throw new Error(`Semua model Gemini quota habis. Detail: ${lastError}`);
+  throw new Error(`Semua model Gemini gagal. Detail terakhir: ${lastError}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,25 +82,19 @@ export async function POST(req: NextRequest) {
 
     const raw = await callGeminiWithFallback(prompt, apiKey);
 
-    // Ekstrak JSON dari dalam ```json ... ``` atau langsung
-    const jsonMatch =
-      raw.match(/```json\s*([\s\S]*?)```/) ||
-      raw.match(/```\s*([\s\S]*?)```/) ||
-      raw.match(/(\{[\s\S]*\})/);
+    // Membersihkan karakter markdown jika AI tetap mengirimnya
+    const cleaned = raw.replace(/```json|```/g, "").trim();
 
-    const cleaned = jsonMatch ? jsonMatch[1].trim() : raw.trim();
-
-    // Validasi JSON sebelum kirim
+    // Validasi JSON
     try {
       JSON.parse(cleaned);
+      return NextResponse.json({ result: cleaned });
     } catch {
       return NextResponse.json(
-        { error: `Model tidak mengembalikan JSON valid. Output: ${raw.substring(0, 300)}` },
+        { error: "Hasil dari AI bukan JSON valid", rawOutput: raw },
         { status: 500 }
       );
     }
-
-    return NextResponse.json({ result: cleaned });
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

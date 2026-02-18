@@ -1,7 +1,9 @@
 import { IResultCardProps, ScanStatus, ScanType } from "@/types";
-import { ScannerService } from "@/lib/services/ScannerService";
+// Pastikan impor menggunakan { ScannerService } untuk mengambil Kelas, bukan instans
+import { ScannerService } from "@/lib/services/ScannerService"; 
 
 export default function ResultCard({ result }: IResultCardProps) {
+  // Sekarang pemanggilan static method ini tidak akan error
   const badgeClass  = ScannerService.getBadgeClass(result.status);
   const icon        = ScannerService.getStatusIcon(result.status);
   const scoreColor  = ScannerService.getRiskColorClass(result.riskScore);
@@ -9,228 +11,72 @@ export default function ResultCard({ result }: IResultCardProps) {
   const colorMap: Record<string, string> = {
     green: "var(--safe)", red: "var(--danger)", yellow: "var(--warn)",
   };
+  
   const badgeStyle: Record<string, { bg: string; color: string; border: string }> = {
     "badge-safe":  { bg: "rgba(0,229,160,0.12)",  color: "var(--safe)",   border: "rgba(0,229,160,0.3)" },
     "badge-danger":{ bg: "rgba(255,77,109,0.12)", color: "var(--danger)", border: "rgba(255,77,109,0.3)" },
     "badge-warn":  { bg: "rgba(255,183,3,0.12)",  color: "var(--warn)",   border: "rgba(255,183,3,0.3)" },
   };
-  const badge = badgeStyle[badgeClass];
+  
+  // Tambahkan fallback agar tidak undefined
+  const badge = badgeStyle[badgeClass] || badgeStyle["badge-warn"];
 
-  // ── Build metric rows based on scan type ──────────────────────────────────────
   const metrics: { label: string; value: string; color?: string }[] = [
     { label: "Risk Score", value: `${result.riskScore}/100`, color: colorMap[scoreColor] },
-    { label: "Kategori",   value: result.category,           color: "var(--text)" },
+    { label: "Kategori",   value: result.category || "Analisis", color: "var(--text)" },
   ];
 
-  if (result.type === ScanType.URL) {
-    if (result.domain)       metrics.push({ label: "Domain",        value: result.domain });
-    if (result.ssl)          metrics.push({ label: "SSL/HTTPS",     value: result.ssl,        color: result.ssl === "Ada" ? "var(--safe)" : "var(--danger)" });
-    if (result.ipReputation) metrics.push({ label: "IP Reputation", value: result.ipReputation, color: result.ipReputation === "Bersih" ? "var(--safe)" : "var(--danger)" });
+  // Logika tampilan untuk Password (Fitur baru kamu)
+  if (result.type === ("PASSWORD" as any)) {
+    const res = result as any;
+    if (res.strength)   metrics.push({ label: "Kekuatan", value: res.strength, color: res.strength.includes("Kuat") ? "var(--safe)" : "var(--danger)" });
+    if (res.isLeaked)   metrics.push({ label: "Kebocoran", value: res.isLeaked, color: res.isLeaked === "Tidak" ? "var(--safe)" : "var(--danger)" });
+    if (res.entropy)    metrics.push({ label: "Entropi",  value: res.entropy });
   }
 
-  if (result.type === ScanType.FILE) {
-    if (result.fileType) metrics.push({ label: "Tipe File", value: result.fileType });
-  }
-
-  if (result.type === ScanType.PHONE) {
-    if (result.operator)      metrics.push({ label: "Operator",       value: result.operator });
-    if (result.region)        metrics.push({ label: "Region",         value: result.region });
-    if (result.reportedCount) metrics.push({ label: "Laporan",        value: result.reportedCount, color: result.reportedCount === "Tidak Ada Laporan" ? "var(--safe)" : "var(--danger)" });
-    if (result.scamType)      metrics.push({ label: "Jenis Penipuan", value: result.scamType });
-  }
-
-  if (result.type === ScanType.EMAIL) {
-    if (result.emailDomain)      metrics.push({ label: "Domain Email",      value: result.emailDomain });
-    if (result.senderReputation) metrics.push({ label: "Reputasi Pengirim", value: result.senderReputation, color: result.senderReputation === "Terpercaya" ? "var(--safe)" : "var(--danger)" });
-    if (result.breachFound)      metrics.push({ label: "Data Breach",       value: result.breachFound, color: result.breachFound === "Tidak Ada" ? "var(--safe)" : "var(--danger)" });
-    if (result.spfStatus)        metrics.push({ label: "SPF",               value: result.spfStatus });
-    if (result.dmarcStatus)      metrics.push({ label: "DMARC",             value: result.dmarcStatus });
-  }
-
-  // ── Type label ────────────────────────────────────────────────────────────────
-  const typeLabel: Record<ScanType, string> = {
+  // Tipe label yang diperbarui
+  const typeLabel: Record<string, string> = {
     [ScanType.URL]:   "🔗 URL Analysis",
     [ScanType.FILE]:  "📁 File Analysis",
-    [ScanType.PHONE]: "📱 Phone Analysis",
-    [ScanType.EMAIL]: "📧 Email Analysis",
+    "PASSWORD":       "🔑 Password Analysis",
   };
 
-  const detailText = [
-    result.indicators?.length
-      ? "🚩 INDIKATOR ANCAMAN:\n" + result.indicators.map(i => `  • ${i}`).join("\n")
-      : null,
-    result.dangerousPermissions?.length
-      ? "\n⚠️ PERMISSION BERBAHAYA:\n" + result.dangerousPermissions.map(p => `  • ${p}`).join("\n")
-      : null,
-    result.recommendation
-      ? `\n💡 REKOMENDASI:\n  ${result.recommendation}`
-      : null,
-  ].filter(Boolean).join("\n");
-
   return (
-    <>
-      <style>{`
-        .result-card {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 20px;
-          overflow: hidden;
-          margin-bottom: 1.5rem;
-          animation: slideUp 0.4s cubic-bezier(.16,1,.3,1);
-        }
-        .result-header {
-          padding: 1.1rem 1.8rem;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          border-bottom: 1px solid var(--border);
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-        .result-header-left { display: flex; align-items: center; gap: 10px; }
-        .result-badge {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 5px 13px; border-radius: 20px;
-          font-family: 'Space Mono', monospace;
-          font-size: 0.72rem; font-weight: 700; letter-spacing: 1px;
-          white-space: nowrap;
-        }
-        .result-type-label {
-          font-family: 'Space Mono', monospace;
-          font-size: 0.72rem;
-          color: var(--muted);
-          line-height: 1.5;
-        }
-        .result-time {
-          font-family: 'Space Mono', monospace;
-          font-size: 0.72rem;
-          color: var(--muted);
-          line-height: 1.5;
-        }
-        .result-body { padding: 1.5rem 1.8rem; }
-        .result-ref {
-          font-family: 'Space Mono', monospace;
-          font-size: 0.78rem;
-          color: var(--muted);
-          margin-bottom: 1rem;
-          word-break: break-all;
-          line-height: 1.6;
-        }
-        .result-summary {
-          font-family: 'Syne', sans-serif;
-          font-size: 1rem;
-          font-weight: 400;
-          color: var(--text);
-          line-height: 1.75;
-          margin-bottom: 1.2rem;
-        }
-        .result-metrics {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 10px;
-          margin-bottom: 1.2rem;
-        }
-        .metric-box {
-          background: var(--surface2);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          padding: 0.9rem 1rem;
-        }
-        .metric-label {
-          font-family: 'Space Mono', monospace;
-          font-size: 0.62rem;
-          color: var(--muted);
-          letter-spacing: 1.2px;
-          text-transform: uppercase;
-          margin-bottom: 4px;
-          line-height: 1.5;
-        }
-        .metric-value {
-          font-family: 'Syne', sans-serif;
-          font-size: 0.88rem;
-          font-weight: 700;
-          line-height: 1.4;
-        }
-        .result-detail {
-          font-family: 'Space Mono', monospace;
-          font-size: 0.78rem;
-          color: var(--muted);
-          line-height: 1.8;
-          white-space: pre-wrap;
-          background: var(--surface2);
-          border-radius: 12px;
-          padding: 1rem 1.2rem;
-        }
-        /* URL screenshot placeholder */
-        .screenshot-placeholder {
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          height: 140px;
-          display: flex; align-items: center; justify-content: center;
-          flex-direction: column; gap: 6px;
-          margin-bottom: 1.2rem;
-          background: var(--surface2);
-          color: var(--muted);
-        }
-        .screenshot-placeholder span:first-child { font-size: 1.8rem; }
-        .screenshot-placeholder span {
-          font-family: 'Space Mono', monospace;
-          font-size: 0.72rem;
-          line-height: 1.5;
-        }
-      `}</style>
-
-      <div className="result-card">
-        {/* Header */}
-        <div className="result-header">
-          <div className="result-header-left">
-            <div className="result-badge" style={{
-              background: badge.bg, color: badge.color,
-              border: `1px solid ${badge.border}`,
-            }}>
-              {icon} {result.status}
-            </div>
-            <span className="result-type-label">{typeLabel[result.type]}</span>
+    <div className="result-card">
+      <div className="result-header" style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div className="result-badge" style={{ background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`, padding: '4px 12px', borderRadius: '20px', fontSize: '0.75rem' }}>
+            {icon} {result.status}
           </div>
-          <span className="result-time">
-            {result.scannedAt.toLocaleTimeString("id-ID")}
-          </span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{typeLabel[result.type] || "Analysis"}</span>
         </div>
-
-        {/* Body */}
-        <div className="result-body">
-          {/* Referensi input */}
-          <p className="result-ref">🔎 {result.inputRef}</p>
-
-          {/* Screenshot placeholder untuk URL */}
-          {result.type === ScanType.URL && (
-            <div className="screenshot-placeholder">
-              <span>🖼️</span>
-              <span>Preview halaman — hubungkan VirusTotal API untuk screenshot live</span>
-            </div>
-          )}
-
-          {/* Summary */}
-          <p className="result-summary">{result.summary}</p>
-
-          {/* Metrics */}
-          <div className="result-metrics">
-            {metrics.map(m => (
-              <div key={m.label} className="metric-box">
-                <div className="metric-label">{m.label}</div>
-                <div className="metric-value" style={{ color: m.color ?? "var(--text)" }}>
-                  {m.value}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Detail block */}
-          {detailText && (
-            <pre className="result-detail">{detailText}</pre>
-          )}
-        </div>
+        <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+          {new Date(result.scannedAt).toLocaleTimeString("id-ID")}
+        </span>
       </div>
-    </>
+
+      <div className="result-body" style={{ padding: '1.5rem' }}>
+        <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '1rem' }}>
+          {result.type === ("PASSWORD" as any) ? "🔑 [PASSWORD HIDDEN]" : `🔎 ${result.inputRef}`}
+        </p>
+        <p style={{ marginBottom: '1.5rem', lineHeight: '1.6' }}>{result.summary}</p>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '1.5rem' }}>
+          {metrics.map(m => (
+            <div key={m.label} style={{ background: 'var(--surface2)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px' }}>{m.label}</div>
+              <div style={{ fontWeight: 'bold', color: m.color || 'var(--text)' }}>{m.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {result.recommendation && (
+          <div style={{ background: 'var(--surface2)', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+            <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>💡 REKOMENDASI:</span>
+            <p style={{ marginTop: '5px', color: 'var(--muted)' }}>{result.recommendation}</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
