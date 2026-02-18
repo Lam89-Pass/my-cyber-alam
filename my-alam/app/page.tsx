@@ -4,7 +4,6 @@ import Navbar from "@/components/Navbar";
 import TentangModal from "@/components/TentangModal";
 import Hero from "@/components/Hero";
 import Scanner from "@/components/Scanner";
-import SocialSection from "@/components/SocialSection";
 import Footer from "@/components/Footer";
 
 const globalStyles = `
@@ -76,7 +75,6 @@ export default function Home() {
       {showModal && <TentangModal onClose={() => setShowModal(false)} />}
       <Hero />
       <Scanner />
-      <SocialSection />
       <Footer />
     </>
   );

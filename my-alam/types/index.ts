@@ -6,8 +6,10 @@ export enum ScanStatus {
 }
 
 export enum ScanType {
-  URL = "url",
-  FILE = "file",
+  URL    = "url",
+  FILE   = "file",
+  PHONE  = "phone",
+  EMAIL  = "email",
 }
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
@@ -29,11 +31,24 @@ export interface IScanResult {
   // File specific
   fileType?: string;
   dangerousPermissions?: string[];
+  // Phone specific
+  operator?: string;
+  region?: string;
+  reportedCount?: string;
+  scamType?: string;
+  // Email specific
+  emailDomain?: string;
+  spfStatus?: string;
+  dmarcStatus?: string;
+  breachFound?: string;
+  senderReputation?: string;
 }
 
 export interface IScanService {
   scanUrl(url: string): Promise<IScanResult>;
   scanFile(fileName: string, fileSize: number): Promise<IScanResult>;
+  scanPhone(phone: string): Promise<IScanResult>;
+  scanEmail(email: string): Promise<IScanResult>;
 }
 
 export interface INavbarProps {
@@ -46,11 +61,4 @@ export interface IModalProps {
 
 export interface IResultCardProps {
   result: IScanResult;
-}
-
-export interface IScannerProps {
-  onResult: (result: IScanResult) => void;
-  onError: (msg: string) => void;
-  isScanning: boolean;
-  setIsScanning: (v: boolean) => void;
 }
